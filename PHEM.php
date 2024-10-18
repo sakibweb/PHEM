@@ -345,39 +345,51 @@ class PHEM {
      * @return bool True on success, false on failure.
      */
     public static function smtpSend($from, $name, $to, $cc, $bcc, $subject, $message) {
-        $headers = self::prepareHeaders($from, $name, $to, $cc, $bcc, $subject, $message);
-        $user64 = base64_encode(self::$smtpUsername);
-        $pass64 = base64_encode(self::$smtpPassword);
-        $mailfrom = '<' . $from . '>';
-        $mailto = '<' . $to . '>';
+        try {
+            $headers = self::prepareHeaders($from, $name, $to, $cc, $bcc, $subject, $message);
+            $user64 = base64_encode(self::$smtpUsername);
+            $pass64 = base64_encode(self::$smtpPassword);
+            $mailfrom = '<' . $from . '>';
+            $mailto = '<' . $to . '>';
 
-        self::$socket = fsockopen(self::$smtpServer, self::$smtpPort, $errno, $errstr, 30);
-        if (!self::$socket) exit('Socket connection error: ' . self::$smtpServer);
-        self::$log[] = 'CONNECTION: fsockopen(' . self::$smtpServer . ')';
-        self::response('220');
-        self::logreq('EHLO ' . self::$local, '250');
-
-        if (self::$smtpSecure == 'tls') {
-            self::logreq('STARTTLS', '220');
-            stream_socket_enable_crypto(self::$socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+            self::$socket = fsockopen(self::$smtpServer, self::$smtpPort, $errno, $errstr, 30);
+            if (!self::$socket) exit('Socket connection error: ' . self::$smtpServer);
+            self::$log[] = 'CONNECTION: fsockopen(' . self::$smtpServer . ')';
+            self::response('220');
             self::logreq('EHLO ' . self::$local, '250');
+
+            if (self::$smtpSecure == 'tls') {
+                self::logreq('STARTTLS', '220');
+                stream_socket_enable_crypto(self::$socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+                self::logreq('EHLO ' . self::$local, '250');
+            }
+
+            self::logreq('AUTH LOGIN', '334');
+            self::logreq($user64, '334');
+            self::logreq($pass64, '235');
+
+            self::logreq('MAIL FROM: ' . $mailfrom, '250');
+            self::logreq('RCPT TO: ' . $mailto, '250');
+
+            self::logreq('DATA', '354');
+            self::$log[] = htmlspecialchars($headers);
+            self::request($headers, '250');
+
+            self::logreq('QUIT', '221');
+            fclose(self::$socket);
+
+            return [
+                'status' => true,
+                'message' => 'Email sent successfully'
+            ];
+    
+        } catch (Exception $e) {
+            return [
+                'status' => false,
+                'message' => 'Failed to send email',
+                'data' => self::$log
+            ];
         }
-
-        self::logreq('AUTH LOGIN', '334');
-        self::logreq($user64, '334');
-        self::logreq($pass64, '235');
-
-        self::logreq('MAIL FROM: ' . $mailfrom, '250');
-        self::logreq('RCPT TO: ' . $mailto, '250');
-
-        self::logreq('DATA', '354');
-        self::$log[] = htmlspecialchars($headers);
-        self::request($headers, '250');
-
-        self::logreq('QUIT', '221');
-        fclose(self::$socket);
-
-        return true;
     }
 
     /**
@@ -419,8 +431,12 @@ class PHEM {
      * @param string $code Expected response code.
      */
     private static function logreq($cmd, $code) {
-        self::$log[] = htmlspecialchars($cmd);
-        self::request($cmd, $code);
+        try {
+            self::$log[] = htmlspecialchars($cmd);
+            self::request($cmd, $code);
+        } catch (Exception $e) {
+            throw new Exception();
+        }
     }
 
     /**
@@ -430,8 +446,12 @@ class PHEM {
      * @param string $code Expected response code.
      */
     private static function request($cmd, $code) {
-        fwrite(self::$socket, $cmd . NL);
-        self::response($code);
+        try {
+            fwrite(self::$socket, $cmd . NL);
+            self::response($code);
+        } catch (Exception $e) {
+            throw new Exception();
+        }
     }
 
     /**
@@ -445,17 +465,13 @@ class PHEM {
         $meta = stream_get_meta_data(self::$socket);
         if ($meta['timed_out'] === true) {
             fclose(self::$socket);
-            self::$log[] = '<b>Was a timeout in Server response</b>';
-            self::showLog();
-            print_r($meta);
-            exit();
+            self::$log[] = $meta;
+            throw new Exception('Was a timeout in Server response');
         }
         self::$log[] = $result;
         if (substr($result, 0, 3) == $code) return;
         fclose(self::$socket);
-        self::$log[] = '<b>SMTP Server response Error</b>';
-        self::showLog();
-        exit();
+        throw new Exception('SMTP Server response Error');
     }
 
     /**
@@ -474,9 +490,11 @@ class PHEM {
      * @return string Generated Message-ID.
      */
     private static function generateMessageID() {
+        $microtimeInt = explode(' ', microtime())[1];
+        
         return sprintf(
             "<%s.%s@%s>",
-            base_convert(microtime(), 10, 36),
+            base_convert($microtimeInt, 10, 36),
             base_convert(bin2hex(openssl_random_pseudo_bytes(8)), 16, 36),
             self::$local
         );
