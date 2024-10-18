@@ -58,7 +58,7 @@ $bcc = 'bcc@example.com'; // Optional
 $subject = 'Email Subject';
 $message = 'Email body text';
 
-if (PHEM::smtpSend($from, $name, $to, $cc, $bcc, $subject, $message)) {
+if (PHEM::smtpSend($from, $name, $to, $cc, $bcc, $subject, $message)['status']) {
     echo "Email sent successfully!";
     PHEM::showLog(); // Optional: display the SMTP transaction log.
 } else {
