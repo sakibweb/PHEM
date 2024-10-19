@@ -393,6 +393,22 @@ class PHEM {
     }
 
     /**
+     * Advanced function to detect HTML, CSS, and JavaScript content.
+     * 
+     * @param string $content The email content to be analyzed.
+     * @return bool True if HTML/CSS/JS is detected, otherwise false.
+     */
+    private static function isHtmlContent($content) {
+        $htmlTagPattern = '/<\/?(html|head|body|div|span|a|p|img|h[1-6]|table|td|tr|th|ul|li|ol|br|hr)[^>]*>/i';
+
+        $cssPattern = '/<style[^>]*>.*<\/style>|style="[^"]+"/is';
+
+        $jsPattern = '/<script[^>]*>.*<\/script>|on[a-z]+="[^"]+"/is';
+
+        return preg_match($htmlTagPattern, $content) || preg_match($cssPattern, $content) || preg_match($jsPattern, $content);
+    }
+
+    /**
      * Prepare email headers for sending.
      *
      * @param string $from Sender's email address.
@@ -415,7 +431,11 @@ class PHEM {
         $headers[] = 'Message-ID: ' . self::generateMessageID();
         $headers[] = 'X-Mailer: ' . 'PHP/' . phpversion();
         $headers[] = 'MIME-Version: ' . '1.0';
-        $headers[] = 'Content-Type: text/plain; charset=UTF-8';
+        if (self::isHtmlContent($message)) {
+            $headers[] = 'Content-Type: text/html; charset=UTF-8';
+        } else {
+            $headers[] = 'Content-Type: text/plain; charset=UTF-8';
+        }
         $headers[] = 'Content-Transfer-Encoding: 8bit';
         $headers[] = '';
         $headers[] = $message;
